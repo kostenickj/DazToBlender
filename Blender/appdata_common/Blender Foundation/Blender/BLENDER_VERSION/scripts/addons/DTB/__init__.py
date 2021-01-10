@@ -306,7 +306,7 @@ class IMP_OT_FBX(bpy.types.Operator):
             dsk = DtbShapeKeys.DtbShapeKeys(False)
             dsk.deleteEyelashes()
             self.pbar(50, wm)
-            dsk.toshortkey()
+            #dsk.toshortkey()
             dsk.deleteExtraSkey()
             dsk.toHeadMorphMs(db)
             wm.progress_update(55)
