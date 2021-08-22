@@ -42,7 +42,7 @@ class CBones:
             [[0.6, 0, -1], [1, 0, 0.2], [0, 0,0.9], [-1, 0, 0.2], [-0.6, 0, -1]],
             [[-0.5, 0, -1], [-1, 0, -0.5], [-1, 0, 0.5], [-0.5, 0, 1], [0.5, 0, 1], [1, 0, 0.5], [1, 0, -0.5],[0.5, 0, -1]],
             [[-0.5, 0, -1], [-1, 0, -0.5], [-1, 0, 0.5], [-0.5, 0, 1], [0.5, 0, 1], [1, 0, 0.5], [1, 0, -0.5],[0.5, 0, -1]],
-            [[-0.5, 0.5, 0], [0.5, 0.5, 0], [0.5, -0.5, 0], [-0.5, -0.5, 0]],
+            [[1, 0, 1], [-1, 0, 1], [-1, 0, -1], [1, 0, -1]],
             [[-0.5, 0.5, 0], [0.5, 0.5, 0], [0.5, -0.5, 0], [-0.5, -0.5, 0]],
             [[-0.1, 2, 0], [0.1, 2, 0], [0.1, -2, 0], [-0.1, -2, 0]],
             [[-0.1, 2, 0], [0.1, 2, 0], [0.1, -2, 0], [-0.1, -2, 0]]
@@ -239,7 +239,7 @@ class CBones:
                 pb.custom_shape_scale = 0.15
             elif plower == 'hip':
                 pb.custom_shape = Util.allobjs().get('square1')
-                pb.custom_shape_scale = 1.2
+                pb.custom_shape_scale = 1.1
             elif 'breast' in plower:
                 pb.custom_shape = Util.allobjs()['octagon1']
                 pb.custom_shape_scale = 0.2
@@ -275,7 +275,7 @@ class CBones:
                 pb.use_custom_shape_bone_size = True
                 if pb.custom_shape_scale == 1.0:
                     pb.custom_shape_scale = 0.3
-
+            pb.custom_shape_transform = pb
     def find_bone_roop(self,bone_group,rootbone):
         for b in bone_group:
             if len(b.children) > 0:
@@ -367,10 +367,14 @@ class CBones:
         dobj.data.edit_bones['hip'].parent = dobj.data.edit_bones.get('root')
         Global.setOpsMode("OBJECT")
 
+    #TODO : Redo the logic so it doesn't rely on naming conventions of bones
     def makeEyes(self):
         Global.setOpsMode("EDIT")
         mihon3 = ['MidNoseBridge','rEye','lEye']
         newbname3 = ['mainEye_H','rEye_H','lEye_H']
+        for bidx,nbname in enumerate(newbname3):
+            if not mihon3[bidx] in bpy.context.object.data.edit_bones.keys():
+                return
         for bidx,nbname in enumerate(newbname3):
             nbone = bpy.context.object.data.edit_bones.new(nbname)
             mihon = bpy.context.object.data.edit_bones[mihon3[bidx]]
@@ -386,6 +390,7 @@ class CBones:
             else:
                 nbone.parent = Global.getAmtr().data.edit_bones.get(newbname3[0])
         Global.setOpsMode('POSE')
+
         for nidx,nb in enumerate(newbname3):
             pb = Global.getAmtr().pose.bones.get(nb)
             pb.rotation_mode = 'XYZ'
