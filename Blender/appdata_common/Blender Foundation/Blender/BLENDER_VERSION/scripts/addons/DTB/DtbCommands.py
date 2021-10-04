@@ -36,7 +36,7 @@ def search_morph(context):
     if len(key) < 2:
         return
     if key.startswith("#"):
-        WCmd.Command(key[1:], context)
+        Command(key[1:],context)
         return
     cobj = bpy.context.object
     mesh = cobj.data
@@ -319,8 +319,9 @@ class Get_Genital:
                     self._EYLS = new_obj_name
 
     def exec_(self):
-        dir = Global.getRootPath()+"GEN" +Global.getFileSp()
+        dir = Global.getRootPath()+"\GEN" +Global.getFileSp()
         if os.path.exists(dir)==False:
+            Versions.msg("Path does not exist", dir, "Message", 'INFO')
             return
         self.check_eyls(dir)
         Global.deselect()
