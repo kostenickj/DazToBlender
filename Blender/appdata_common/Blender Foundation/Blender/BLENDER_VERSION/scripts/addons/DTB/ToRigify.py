@@ -235,10 +235,16 @@ class ToRigify:
                     find = False
                     if "Toe" in eb.name:
                         if eb.name.startswith("r"):
-                            eb.parent = robj.data.edit_bones["toe.R"]
+                            if bpy.app.version < (3, 1):
+                                eb.parent = robj.data.edit_bones["toe.R"]
+                            else:
+                                eb.parent = robj.data.edit_bones["toe_ik.R"]
                             self.to_layer(eb, 18)
                         else:
-                            eb.parent = robj.data.edit_bones["toe.L"]
+                            if bpy.app.version < (3, 1):
+                                eb.parent = robj.data.edit_bones["toe.L"]
+                            else:
+                                eb.parent = robj.data.edit_bones["toe_ik.L"]
                             self.to_layer(eb, 15)
                         find = True
                     else:
@@ -333,7 +339,8 @@ class ToRigify:
             pbs = Global.getRgfy().pose.bones
             if bs[2] in pbs:
                 pbs[bs[2]].custom_shape = Util.allobjs().get(bs[3])
-                pbs[bs[2]].custom_shape_scale = 6.0
+                #blender 3.0 break change
+                Versions.handle_custom_shape_scale(pbs[bs[2]], 6.0)
             Global.getRgfyBones()[bs[2]].layers[3] = True
             Global.getRgfyBones()[bs[2]].layers[4] = False
             for i in range(3):
@@ -359,7 +366,8 @@ class ToRigify:
                 wtg = Util.allobjs().get("Circle")
                 if wtg is not None:
                     pb.custom_shape = wtg
-                    pb.custom_shape_scale = 0.2
+                    #blender 3.0 break change
+                    Versions.handle_custom_shape_scale(pb, 0.2)
 
     def delete001_sk(self):
         Global.setOpsMode("OBJECT")
