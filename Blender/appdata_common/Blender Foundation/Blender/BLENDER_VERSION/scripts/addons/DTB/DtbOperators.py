@@ -158,7 +158,7 @@ class RENAME_MORPHS(bpy.types.Operator):
 # End of Utlity Classes
 # Start of Import Classes
 class IMP_OT_FBX(bpy.types.Operator):
-    """Supports Genesis 3, 8, and 8.1"""
+    """Supports Genesis 3, 8, 8.1 and 9"""
 
     bl_idname = "import.fbx"
     bl_label = "Import New Genesis Figure"
@@ -179,7 +179,7 @@ class IMP_OT_FBX(bpy.types.Operator):
         Util.deleteEmptyDazCollection()
         if bpy.context.window_manager.update_scn_settings:
             bpy.context.preferences.inputs.use_mouse_depth_navigate = True
-            bpy.context.scene.render.engine = "CYCLES"
+            # bpy.context.scene.render.engine = "CYCLES"
             bpy.context.space_data.shading.type = "SOLID"
             bpy.context.space_data.shading.color_type = "OBJECT"
             bpy.context.space_data.shading.show_shadows = False
@@ -219,21 +219,53 @@ class IMP_OT_FBX(bpy.types.Operator):
 
         if Global.getAmtr() is not None and Global.getBody() is not None:
 
+            ###############################
+            # materials
+            dtb_shaders.make_dct()
+            dtb_shaders.load_shader_nodes()
+            body = Global.getBody()
+            dtb_shaders.setup_materials(body)
+            self.pbar(35, wm)
+            
+            fig_objs_names = [Global.get_Body_name()]
+            for obj in Util.myacobjs():
+                # Skip for any of the following cases
+                case1 = not Global.isRiggedObject(obj)
+                case2 = obj.name in fig_objs_names
+                if case1 or case2:
+                    continue
+                dtb_shaders.setup_materials(obj)
+            self.pbar(40, wm)
+
+            # # materials
+            # DtbMaterial.forbitMinus()
+            # self.pbar(95, wm)
+            # Global.deselect()
+
             # Set Custom Properties
             Global.getAmtr()["Asset Name"] = dtu.get_asset_name()
             Global.getAmtr()["Collection"] = Util.cur_col_name()
             reload_dropdowns("choose_daz_figure")
             pose.add_skeleton_data()
 
+            # Translate any global Bone Name(s)
+            DtbIKBones.ik_name = DataBase.translate_bonenames(DtbIKBones.ik_name)
+            DtbIKBones.bone_name = DataBase.translate_bonenames(DtbIKBones.bone_name)
+            db.translate_member_bonenames()
+
+            #############################
+            # Re-orient rest pose
             Global.deselect()  # deselect all the objects
             pose.clear_pose()  # Select Armature and clear transform
             drb.mub_ary_A()  # Find and read FIG.dat file
-            drb.orthopedy_empty()  # On "EMPTY" type objects
+            drb.preprocess_empty_objects()  # On "EMPTY" type objects
             self.pbar(18, wm)
-            drb.orthopedy_everything()  # clear transform, clear and reapply parent, CMs -> METERS
+            drb.preprocess_bones()  # clear transform, clear and reapply parent, CMs -> METERS
             Global.deselect()
             self.pbar(20, wm)
             drb.set_bone_head_tail()  # Sets head and tail positions for all the bones
+
+            # Re-orient active pose and animations
             Global.deselect()
             self.pbar(25, wm)
             drb.bone_limit_modify()
@@ -243,24 +275,6 @@ class IMP_OT_FBX(bpy.types.Operator):
             self.pbar(30, wm)
             drb.unwrapuv()
             Global.deselect()
-
-            # materials
-            dtb_shaders.make_dct()
-            dtb_shaders.load_shader_nodes()
-            body = Global.getBody()
-            dtb_shaders.setup_materials(body)
-            self.pbar(35, wm)
-
-            fig_objs_names = [Global.get_Body_name()]
-            for obj in Util.myacobjs():
-                # Skip for any of the following cases
-                case1 = not Global.isRiggedObject(obj)
-                case2 = obj.name in fig_objs_names
-                if case1 or case2:
-                    continue
-                dtb_shaders.setup_materials(obj)
-
-            self.pbar(40, wm)
 
             if Global.getIsGen():
                 drb.fixGeniWeight(db)
@@ -278,6 +292,7 @@ class IMP_OT_FBX(bpy.types.Operator):
             Global.deselect()
             self.pbar(60, wm)
 
+            # Make IK controls
             drb.makeRoot()
             drb.makePole()
             drb.makeIK()
@@ -285,11 +300,8 @@ class IMP_OT_FBX(bpy.types.Operator):
             drb.mub_ary_Z()
             self.pbar(70, wm)
             Global.setOpsMode("OBJECT")
-            try:
-                CustomBones.CBones()
-            except:
-                print("Custom bones currently not supported for this character")
-            self.pbar(80, wm)
+
+            # Assign IK constraints
             Global.setOpsMode("OBJECT")
             Global.deselect()
             self.pbar(90, wm)
@@ -308,32 +320,46 @@ class IMP_OT_FBX(bpy.types.Operator):
             )  # lock movements around axes with zeroed limits for each bone
             Global.deselect()
 
-            # materials
-            DtbMaterial.forbitMinus()
-            self.pbar(95, wm)
-            Global.deselect()
+            # Do custom bone shapes
+            try:
+                CustomBones.CBones()
+            except:
+                print("Custom bones currently not supported for this character")
+            self.pbar(80, wm)
+
+            # Hide and disable IK controls
+            DtbIKBones.hide_ik(-1, True)
+            DtbIKBones.set_scene_settings(anim.total_key_count)
+            self.pbar(100, wm)
+            DtbIKBones.ik_access_ban = False
+
 
             Versions.active_object(Global.getAmtr())
             Global.setOpsMode("POSE")
             drb.mub_ary_Z()
             Global.setOpsMode("OBJECT")
             drb.finishjob()
+
             Global.setOpsMode("OBJECT")
             if not anim.has_keyframe(Global.getAmtr()):
                 pose.update_scale()
                 pose.restore_pose()  # Run when no animation exists.
-            DtbIKBones.bone_disp(-1, True)
-            DtbIKBones.set_scene_settings(anim.total_key_count)
-            self.pbar(100, wm)
-            DtbIKBones.ik_access_ban = False
+
+
             if bpy.context.window_manager.morph_prefix:
                 bpy.ops.rename.morphs('EXEC_DEFAULT')
+
             self.report({"INFO"}, "Success")
         else:
-            self.show_error()
+            # if dtu asset type is Animation, then skip error message
+            if dtu.get_asset_type() == "Animation":
+                print("DEBUG: IMP_OT_FBX.import_one(): ERROR: Global.getAmtr()=" + str(Global.getAmtr()) + ", Global.getBody()=" + str(Global.getBody()))
+            else:
+                self.show_error()
 
         wm.progress_end()
         DtbIKBones.ik_access_ban = False
+
 
     def execute(self, context):
         if bpy.context.window_manager.use_custom_path:
@@ -423,11 +449,28 @@ class IMP_OT_POSE(bpy.types.Operator, ImportHelper):
 class CLEAR_OT_Pose(bpy.types.Operator):
 
     bl_idname = "my.clear"
-    bl_label = "Clear All Pose"
+    bl_label = "Clear All Poses"
 
-    def clear_pose(self):
+    def clear_all_poses(self):
         if bpy.context.object is None:
             return
+        # if context is not pose mode, switch to pose mode
+        if bpy.context.mode != "POSE":
+            bpy.ops.object.mode_set(mode="POSE")
+        # disable IK handles
+        ik_undo_table = [False, False, False, False]
+        try:
+            for idx in range(4):
+                ik_value = DtbIKBones.get_ik_influence(
+                    DtbIKBones.get_influece_data_path(DtbIKBones.bone_name[idx])
+                )
+                if ik_value >= 0.5:
+                    ik_undo_table[idx] = True
+                DtbIKBones.hide_ik(idx, True)
+                DtbIKBones.iktofk(idx)
+                DtbIKBones.reset_pole(idx)
+        except:
+            pass
         if (
             Global.getAmtr() is not None
             and Versions.get_active_object() == Global.getAmtr()
@@ -442,9 +485,20 @@ class CLEAR_OT_Pose(bpy.types.Operator):
                 pb.bone.select = True
         bpy.ops.pose.transforms_clear()
         bpy.ops.pose.select_all(action="DESELECT")
+        # restore IK handles
+        try:
+            for idx in range(4):
+                if ik_undo_table[idx]:
+                    # print("2023-July-02, DEBUG: clear_all_poses(): trying to restore ik_handle idx=" + str(idx))
+                    DtbIKBones.hide_ik(idx, False)
+                    DtbIKBones.fktoik(idx)
+        except:
+            pass
+        bpy.ops.pose.select_all(action="DESELECT")
 
     def execute(self, context):
-        self.clear_pose()
+        self.clear_all_poses()
+        # print("2023-July-02, DEBUG: clear_all_poses() has finished.")
         return {"FINISHED"}
 
 
@@ -468,7 +522,7 @@ class OPTIMIZE_OT_material(bpy.types.Operator):
 # Start of Rigify Classes
 
 
-def clear_pose():
+def clear_pose_for_rigify():
     if bpy.context.object is None:
         return
     if (
@@ -497,7 +551,11 @@ class TRANS_OT_Rigify(bpy.types.Operator):
         return self.execute(context)
 
     def execute(self, context):
-        clear_pose()
+        ## TODO: add G9 support
+        if Global.getIsG9():
+            self.report({"ERROR"}, "Genesis 9 is not supported yet in the auto Rigify tool.")
+            return {"FINISHED"}
+        clear_pose_for_rigify()
         Util.active_object_to_current_collection()
         dtu = DataBase.DtuLoader()
         trf = ToRigify.ToRigify(dtu)

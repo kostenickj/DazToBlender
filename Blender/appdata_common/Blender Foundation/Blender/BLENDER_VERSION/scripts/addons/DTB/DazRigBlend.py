@@ -39,7 +39,12 @@ class DazRigBlend:
             if ext == ".fbx":
                 DtbImports.fbx_catched_error(filepath)
 
-    def roop_empty(self, obj):
+    ### remove_empty_objects()
+    ### 1. Recursively removes all empty objects, skipping meshes
+    ### 2. If armature is scaled to less than 1.5%, it multiplies the current object's
+    ###    location by 100, applies a 100x scale, and then bakes all active transforms
+    ###    into the object.
+    def remove_empty_objects(self, obj):
         Global.deselect()
         Versions.active_object(obj)
         Versions.select(obj, True)
@@ -69,24 +74,29 @@ class DazRigBlend:
             if obj.type == "EMPTY":
                 self.del_empty.append(obj)
             for c in obj.children:
-                self.roop_empty(c)
+                self.remove_empty_objects(c)
 
-    def orthopedy_empty(self):
+    # removes empty objects and performs scaling
+    def preprocess_empty_objects(self):
         self.buttons = []
         self.add_amtr_objs = []
         for dobj in Util.allobjs():
             if dobj.type == "EMPTY":
                 if dobj.parent == Global.getAmtr():
                     self.del_empty = []
-                    self.roop_empty(dobj)
+                    self.remove_empty_objects(dobj)
                     Global.deselect()
                     Versions.active_object_none()
 
-    def orthopedy_everything(self):
+    ### Preprocesses bones by unparenting meshes from the figure,zeroing out
+    ### transforms on the Armature, repositioning objects, and reparenting to
+    ### the Armature.
+    def preprocess_bones(self):
         amtr_objs = []
         self.del_empty = []
         Global.deselect()
-        # Cycles through the objects and unparents the meshes from the figure.
+        # Cycles through the objects and unparents the meshes from the figure,
+        # also bakes any active transforms into the object.
         for dobj in Util.myacobjs():
             if dobj.type == "MESH":
                 if dobj.parent == Global.getAmtr():
@@ -101,6 +111,7 @@ class DazRigBlend:
         Global.deselect()
 
         # Zero out the transforms on the Armature
+        ### actually, this code is only zeroing pose + scale, and baking translation and rotation
         Versions.select(Global.getAmtr(), True)
         Versions.active_object(Global.getAmtr())
         Versions.show_x_ray(Global.getAmtr())
@@ -115,9 +126,10 @@ class DazRigBlend:
         for dobj in amtr_objs:
             Versions.select(dobj, True)
             Versions.active_object(dobj)
+            ### reorients mesh from y-up to z-up
             dobj.rotation_euler.x += math.radians(90)
-            # for i in range(3):
-            #     dobj.scale[i] *= self.skeleton_data_dict["skeletonScale"][1]
+            for i in range(3):
+                dobj.scale[i] *= self.skeleton_data_dict["skeletonScale"][1]
             bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
             for i in range(3):
                 dobj.lock_location[i] = True
@@ -248,6 +260,28 @@ class DazRigBlend:
         bpy.ops.uv.unwrap()
         Global.setOpsMode("OBJECT")
 
+    ## DB 2023-July-03
+    def disable_bone_limits(self):
+        # print("DEBUG: disable_bone_limits()")
+        for bone in Global.getAmtr().pose.bones:
+            if bone.name.endswith("_IK") or bone.name not in self.bone_limits.keys():
+                continue
+            if "twist" in bone.name.lower():
+                continue
+            rot_limit = bone.constraints["Limit Rotation"]
+            rot_limit.use_limit_x = False
+            rot_limit.use_limit_y = False
+            rot_limit.use_limit_z = False
+            bone.use_ik_limit_x = False
+            bone.use_ik_limit_y = False
+            bone.use_ik_limit_z = False
+            bone.lock_ik_x = False
+            bone.lock_ik_y = False
+            bone.lock_ik_z = False
+#            bone.lock_rotation[0] = False
+#            bone.lock_rotation[1] = False
+#            bone.lock_rotation[2] = False
+
     def bone_limit_modify(self):
         for bone in Global.getAmtr().pose.bones:
             if bone.name.endswith("_IK") or bone.name not in self.bone_limits.keys():
@@ -296,6 +330,12 @@ class DazRigBlend:
                 bone.ik_stiffness_y = 0.99
                 bone.ik_stiffness_z = 0.99
                 if "ThighTwist" in bone.name:
+                    bone.ik_stiffness_x = 0.99
+            # name changes for Genesis 9
+            elif bone.name[2:] == "shin" or "thigh" in bone.name:
+                bone.ik_stiffness_y = 0.99
+                bone.ik_stiffness_z = 0.99
+                if "twist" in bone.name:
                     bone.ik_stiffness_x = 0.99
 
     def ifitsman(self, bname, roll):
@@ -378,16 +418,17 @@ class DazRigBlend:
     def makePole(self):
         dobj = Global.getAmtr()
         pole_bones = ["lShin", "pelvis", "root"]
+        pole_bones = DataBase.translate_bonenames(pole_bones)
         make_pole = 0
         for bone in dobj.data.edit_bones.keys():
             if bone in pole_bones:
                 make_pole += 1
         if make_pole == 3:
             poles = [
-                dobj.data.edit_bones.new("rShin_P"),
-                dobj.data.edit_bones.new("lShin_P"),
+                dobj.data.edit_bones.new(DataBase.translate_bonenames("rShin_P")),
+                dobj.data.edit_bones.new(DataBase.translate_bonenames("lShin_P")),
             ]
-            lshin = dobj.data.edit_bones["lShin"]
+            lshin = dobj.data.edit_bones[DataBase.translate_bonenames("lShin")]
             adl = dobj.data.edit_bones["pelvis"]
             yjiku = [adl.tail[2], adl.head[2]]
             yjiku[0] = yjiku[0] + (yjiku[1] - yjiku[0]) / 2
@@ -411,7 +452,10 @@ class DazRigBlend:
 
     def makeIK(self):
         chain_count = [6, 6, 3, 3]
+        if Global.getIsG9():
+            chain_count = [4, 4, 2, 2]
         ctl_bones = ["rHand", "lHand", "rShin", "lShin"]
+        ctl_bones = DataBase.translate_bonenames(ctl_bones)
 
         make_ik = 0
         Global.setOpsMode("EDIT")
@@ -438,6 +482,7 @@ class DazRigBlend:
                                 # ikbone.roll = bn.roll
                         else:
                             fts = ["rFoot", "lFoot"]
+                            fts = DataBase.translate_bonenames(fts)
                             ft = amt.data.edit_bones.get(fts[i - 2])
                             if ft is not None:
                                 for j in range(3):
@@ -467,6 +512,7 @@ class DazRigBlend:
 
     def copy_rotation(self):
         crbones = ["rFoot", "lFoot", "rShin_IK", "lShin_IK"]
+        crbones = DataBase.translate_bonenames(crbones)
         amt = Global.getAmtr()
         for i in range(2):
             c = amt.pose.bones[crbones[i]].constraints.new("COPY_ROTATION")
@@ -479,6 +525,7 @@ class DazRigBlend:
             c.use_z = True
             c.influence = 0.0
         h_iks = ["rHand_IK", "lHand_IK"]
+        h_iks = DataBase.translate_bonenames(h_iks)
         for hik in h_iks:
             phik = amt.pose.bones.get(hik)
             if phik is not None:
@@ -551,6 +598,7 @@ class DazRigBlend:
                         m.use_deform_preserve_volume = True
                 ob.use_shape_key_edit_mode = True
         b3 = ["root", "rShin_P", "lShin_P"]
+        b3 = DataBase.translate_bonenames(b3)
         for b in b3:
             pb = Global.getAmtr().pose.bones.get(b)
             if pb is not None:
@@ -583,6 +631,8 @@ class DazRigBlend:
                     self.mub_ary.append(ss)
 
     def is_mub(self, obj):
+        # if len(self.mub_ary) == 0:
+        #     print("DEBUG: is_mub() - self.mub_ary is empty!")
         for ss in self.mub_ary:
             if ss[1] == obj.name:
                 return True
@@ -608,6 +658,7 @@ class DazRigBlend:
     def eyes_correct(self):
         bpy.ops.pose.select_all(action="DESELECT")
         eyes = ["lEye", "rEye"]
+        eyes = DataBase.translate_bonenames(eyes)
         for eye in eyes:
             e = Global.getAmtr().pose.bones.get(eye)
             if e is not None:
