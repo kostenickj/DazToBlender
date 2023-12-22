@@ -179,7 +179,7 @@ class DtbShapeKeys:
             # ERCKeyed
 
             keyed = morph_link["Keys"]
-
+            key_1 = None
             # Currently Skip the 3rd Key if Key 0 has two
             for i in range(len(keyed)):
                 key = list(keyed)[i]
@@ -202,6 +202,8 @@ class DtbShapeKeys:
                 key_0 = str(abs(float(key_0)))
                 key_1 = str(abs(float(key_1)))
 
+            if key_1 is None or len(key_1) < 1:
+                key_1 = '1'
             dist = str((float(key_1) - float(key_0)))
             normalized_dist = str((1 - 0))
 
