@@ -50,10 +50,11 @@ class EnvProp:
         env_dirs = [f for f in env_dirs if os.path.isdir(os.path.join(self.env_root, f))]
         int_progress = 100/len(env_dirs)
         for i in range(len(env_dirs)):
+            fbx_adr = os.path.join(self.env_root, "ENV" + str(i), "B_ENV.fbx")
+            if os.path.exists(fbx_adr) == False:
+                break
             Global.clear_variables()
-            Global.setHomeTown(os.path.join(
-                                self.env_root, "ENV" + str(i)
-                                ))
+            Global.setHomeTown(os.path.join(self.env_root, "ENV" + str(i)))
             Global.load_asset_name()
             Util.decideCurrentCollection('ENV')
             progress_bar(int(int_progress * i) + 5)
@@ -67,6 +68,8 @@ class EnvProp:
         return {"FINISHED"}
 
     def set_default_settings(self):
+        if Global.bNonInteractiveMode != 0:
+            return
         # bpy.context.scene.render.engine = 'CYCLES'
         bpy.context.space_data.shading.type = 'SOLID'
         bpy.context.space_data.shading.color_type = 'OBJECT'

@@ -160,7 +160,7 @@ class RENAME_MORPHS(bpy.types.Operator):
 class IMP_OT_FBX(bpy.types.Operator):
     """Supports Genesis 3, 8, 8.1 and 9"""
 
-    bl_idname = "import.fbx"
+    bl_idname = "import_dtu.fig"
     bl_label = "Import New Genesis Figure"
     bl_options = {"REGISTER", "UNDO"}
     root = Global.getRootPath()
@@ -172,10 +172,14 @@ class IMP_OT_FBX(bpy.types.Operator):
 
     def finish_obj(self):
         Versions.reverse_language()
+        if Global.bNonInteractiveMode != 0:
+            return
         Versions.pivot_active_element_and_center_and_trnormal()
         Global.setRenderSetting(True)
 
     def layGround(self):
+        if Global.bNonInteractiveMode != 0:
+            return
         Util.deleteEmptyDazCollection()
         if bpy.context.window_manager.update_scn_settings:
             bpy.context.preferences.inputs.use_mouse_depth_navigate = True
@@ -190,6 +194,8 @@ class IMP_OT_FBX(bpy.types.Operator):
         bpy.ops.view3d.snap_cursor_to_center()
 
     def pbar(self, v, wm):
+        if Global.bNonInteractiveMode != 0:
+            return
         wm.progress_update(v)
 
     def import_one(self, fbx_adr):
@@ -346,6 +352,33 @@ class IMP_OT_FBX(bpy.types.Operator):
                 pose.restore_pose()  # Run when no animation exists.
 
 
+            # DB 2024-06-14: work-around for dForce hair
+            if "dForce" in dtu.dtu_dict and dtu.dtu_dict["dForce"] is not None:
+                dforce_data = dtu.dtu_dict["dForce"]
+                for dforce_obj in dforce_data:
+                    if dforce_obj is not None:
+                        obj_name = dforce_obj["Asset Name"]
+                        if obj_name is not None:
+                            obj = bpy.data.objects.get(obj_name + ".Shape")
+                            if obj is not None:
+                                # get DForce-Modifiers
+                                has_dforce_hairs = False
+                                if dforce_obj["DForce-Modifiers"] is not None:
+                                    for dforce_modifier in dforce_obj["DForce-Modifiers"]:
+                                        if dforce_modifier is not None:
+                                            modifier_class = dforce_modifier["Modifier Class"]
+                                            if modifier_class is not None and "dforcehair" in modifier_class.lower():
+                                                has_dforce_hairs = True
+                                                break
+                                if has_dforce_hairs:
+                                    # check for vertex groups
+                                    if len(obj.vertex_groups) == 0:
+                                        # create vertex group
+                                        obj.vertex_groups.new(name="head")
+                                        # assign all vertices to the vertex group
+                                        for v in obj.data.vertices:
+                                            obj.vertex_groups[0].add([v.index], 1.0, "REPLACE")
+
             if bpy.context.window_manager.morph_prefix:
                 bpy.ops.rename.morphs('EXEC_DEFAULT')
 
@@ -388,6 +421,8 @@ class IMP_OT_FBX(bpy.types.Operator):
         return {"FINISHED"}
 
     def show_error(self):
+        if Global.bNonInteractiveMode != 0:
+            return
         Global.setOpsMode("OBJECT")
         for b in Util.myacobjs():
             bpy.data.objects.remove(b)
@@ -402,7 +437,7 @@ class IMP_OT_FBX(bpy.types.Operator):
 
 
 class IMP_OT_ENV(bpy.types.Operator):
-    bl_idname = "import.env"
+    bl_idname = "import_dtu.env"
     bl_label = "Import New Env/Prop"
     bl_description = ""
     bl_options = {"REGISTER", "UNDO"}

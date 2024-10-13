@@ -1,8 +1,26 @@
 <!DOCTYPE RCC>
 <RCC version="1.0">
+    <qresource prefix="/DazBridge">
+        <file alias="bake_all_pivots_nogui.dsa">Scripts/bake_all_pivots_nogui.dsa</file>
+        <file alias="bake_all_instances_nogui.dsa">Scripts/bake_all_instances_nogui.dsa</file>
+        <file alias="bake_rfn_nogui.dsa">Scripts/bake_rfn_nogui.dsa</file>
+    </qresource>
     <qresource prefix="/DazBridgeBlender">
-        <file alias="blenderplugin.zip">blenderplugin.zip</file>
+        <file alias="blenderaddon.zip">blenderaddon.zip</file>
         <file alias="icon">Images/Daz to Blender.png</file>
         <file alias="banner.jpg">Images/banner.jpg</file>
+        <file alias="create_blend.py">Scripts/create_blend.py</file>
+        <file alias="blender_tools.py">Scripts/blender_tools.py</file>
+        <file alias="NodeArrange.py">Scripts/NodeArrange.py</file>
+        <file alias="game_readiness_tools.py">Scripts/game_readiness_tools.py</file>
+        <file alias="bone_converter_aArgs.dsa">Scripts/bone_converter_aArgs.dsa</file>
+        <file alias="g9_to_metahuman.json">Scripts/g9_to_metahuman.json</file>
+        <file alias="g9_to_unreal_manny.json">Scripts/g9_to_unreal_manny.json</file>
+        <file alias="g9_to_unity.json">Scripts/g9_to_unity.json</file>
+        <file alias="g9_to_mixamo.json">Scripts/g9_to_mixamo.json</file>
+        <file alias="g8_to_metahuman.json">Scripts/g8_to_metahuman.json</file>
+        <file alias="g8_to_unreal.json">Scripts/g8_to_unreal.json</file>
+        <file alias="g8_to_mixamo.json">Scripts/g8_to_mixamo.json</file>
+        <file alias="g8_to_unity.json">Scripts/g8_to_unity.json</file>
     </qresource>
 </RCC>

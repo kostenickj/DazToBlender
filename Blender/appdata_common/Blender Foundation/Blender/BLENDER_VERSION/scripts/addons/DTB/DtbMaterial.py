@@ -320,10 +320,15 @@ class DtbShaders:
         # else:
         #     self.is_Alpha = False
 
+        if "Refraction Weight" in property_key and property_key["Refraction Weight"]["Value"] > 0:
+            self.is_Refract = True
+            self.is_Alpha = True
+
     def check_refract(self):
         if "Refraction Weight" in self.mat_property_dict.keys():
             if self.mat_property_dict["Refraction Weight"]["Value"] > 0:
                 self.is_Refract = True
+                self.is_Alpha = True
 
     def set_eevee_alpha(self, mat):
         if self.is_Alpha:
@@ -349,6 +354,7 @@ class DtbShaders:
         if self.is_Refract:
             mat.use_screen_refraction = True
             mat.refraction_depth = 0.8 * Global.get_size()
+            Versions.eevee_alpha(mat, "HASHED", 0)
 
     def find_node_property(self, input_key, mat_property_dict):
         property_key, property_type = input_key.split(": ")
@@ -440,6 +446,33 @@ class DtbShaders:
             mat_links.new(shader_node.outputs["EEVEE"], out_node_ev.inputs["Surface"])
             # Find and Attach Node Input
 
+            # DB, 2024-09-25: Bugfix to account for combined diffuse+alpha image maps
+            color_file = None
+            alpha_file = None
+            color_node = None
+            alpha_node = None
+            is_combined_diffuse_alpha = False
+            # perform a pre-pass to popuate the color and alpha textures
+            print("DEBUG: DazToBlender: setup_materials(): performing pre-pass to populate color and alpha textures, material: " + mat_name)
+            for input_key in shader_node.inputs.keys():
+                if "Texture" in input_key:
+                    if input_key.split(": ")[0] in self.mat_property_dict.keys():
+                        (
+                            property_key,
+                            property_type,
+                            property_info,
+                        ) = self.find_node_property(input_key, self.mat_property_dict)
+                        if "Diffuse Color" in property_key:
+                            print("DEBUG: DazToBlender: setup_materials(): property_key = Diffuse Color, property_info = " + str(property_info))
+                            color_file = property_info
+                        if "Opacity" in property_key:
+                            print("DEBUG: DazToBlender: setup_materials(): property_key = Opacity, property_info = " + str(property_info))
+                            alpha_file = property_info
+            if (color_file is not None and color_file != ""
+                and alpha_file is not None and alpha_file != ""
+                and color_file == alpha_file):
+                is_combined_diffuse_alpha = True
+                print("DEBUG: DazToBlender: DtbMaterial.py: setup_materials(): is_combined_diffuse_alpha = True, material: " + mat_name)
             for input_key in shader_node.inputs.keys():
 
                 if ("Texture" in input_key) or ("Value" in input_key):
@@ -462,16 +495,50 @@ class DtbShaders:
                             shader_node.inputs[input_key].default_value = property_info
 
                         if property_type == "Texture":
-                            if os.path.exists(property_info):
-                                self.check_map_type(property_key)
-                                tex_image_node = mat_nodes.new(
-                                    type="ShaderNodeTexImage"
-                                )
-                                self.create_texture_input(property_info, tex_image_node)
-                                tex_node_output = tex_image_node.outputs["Color"]
-                                mat_links.new(
-                                    tex_node_output, shader_node.inputs[input_key]
-                                )
+                            # check if a usable node already exists
+                            tex_image_node = None
+                            if (is_combined_diffuse_alpha and "Diffuse Color" in property_key):
+                                if alpha_node is not None:
+                                    self.check_map_type(property_key)
+                                    tex_image_node = alpha_node
+                                    tex_node_output = tex_image_node.outputs["Color"]
+                                    mat_links.new(
+                                        tex_node_output, shader_node.inputs[input_key]
+                                    )
+                            elif (is_combined_diffuse_alpha and "Opacity" in property_key):
+                                if color_node is not None:
+                                    self.check_map_type(property_key)
+                                    tex_image_node = color_node
+                                    tex_node_output = tex_image_node.outputs["Alpha"]
+                                    mat_links.new(
+                                        tex_node_output, shader_node.inputs[input_key]
+                                    )
+                            if tex_image_node is None:
+                                # create a texture node if one does not already exist
+                                if os.path.exists(property_info):
+                                    self.check_map_type(property_key)
+                                    tex_image_node = mat_nodes.new(
+                                        type="ShaderNodeTexImage"
+                                    )
+                                    self.create_texture_input(property_info, tex_image_node)
+                                    if (is_combined_diffuse_alpha and "Diffuse Color" in property_key):
+                                        color_node = tex_image_node
+                                        tex_node_output = tex_image_node.outputs["Color"]
+                                        mat_links.new(
+                                            tex_node_output, shader_node.inputs[input_key]
+                                        )
+                                    elif (is_combined_diffuse_alpha and "Opacity" in property_key):
+                                        alpha_node = tex_image_node
+                                        tex_node_output = tex_image_node.outputs["Alpha"]
+                                        mat_links.new(
+                                            tex_node_output, shader_node.inputs[input_key]
+                                        )
+                                    else:
+                                        tex_node_output = tex_image_node.outputs["Color"]
+                                        mat_links.new(
+                                            tex_node_output, shader_node.inputs[input_key]
+                                        )
+
 
             # Set Alpha Modes
             self.check_refract()
@@ -485,6 +552,84 @@ class DtbShaders:
                     out_node_cy.inputs["Displacement"],
                 )
                 mat.cycles.displacement_method = "BOTH"
+                # add principled BSDF node
+                pbsdf = mat_nodes.new(type="ShaderNodeBsdfPrincipled")
+                mat_links.new(shader_node.outputs["Base Color"], pbsdf.inputs["Base Color"])
+                mat_links.new(shader_node.outputs["Roughness"], pbsdf.inputs["Roughness"])
+                mat_links.new(shader_node.outputs["Normal"], pbsdf.inputs["Normal"])
+                mat_links.new(shader_node.outputs["IOR"], pbsdf.inputs["IOR"])
+                if bpy.app.version[0] >= 4:
+                    mat_links.new(shader_node.outputs["Specular"], pbsdf.inputs["Specular IOR Level"])
+                else:
+                    mat_links.new(shader_node.outputs["Specular"], pbsdf.inputs["Specular"])
+                # link pbsdf to outputs
+                mat_links.new(pbsdf.outputs["BSDF"], out_node_cy.inputs["Surface"])
+                mat_links.new(pbsdf.outputs["BSDF"], out_node_ev.inputs["Surface"])
+            elif node_group == "IrayUber":
+                # add principled BSDF node
+                pbsdf = mat_nodes.new(type="ShaderNodeBsdfPrincipled")
+                mat_links.new(shader_node.outputs["Base Color"], pbsdf.inputs["Base Color"])
+                mat_links.new(shader_node.outputs["Metallic"], pbsdf.inputs["Metallic"])
+                if bpy.app.version[0] >= 4:
+                    mat_links.new(shader_node.outputs["Specular"], pbsdf.inputs["Specular IOR Level"])
+                else:
+                    mat_links.new(shader_node.outputs["Specular"], pbsdf.inputs["Specular"])
+                mat_links.new(shader_node.outputs["Roughness"], pbsdf.inputs["Roughness"])
+                mat_links.new(shader_node.outputs["Alpha"], pbsdf.inputs["Alpha"])
+                mat_links.new(shader_node.outputs["Normal"], pbsdf.inputs["Normal"])
+                # link pbsdf to outputs
+                mat_links.new(pbsdf.outputs["BSDF"], out_node_cy.inputs["Surface"])
+                mat_links.new(pbsdf.outputs["BSDF"], out_node_ev.inputs["Surface"])
+                # DB 2024-10-02: handle refraction weight
+                if self.is_Refract:
+                    # set iray opacity to 0.05
+                    if "Cutout Opacity: Value" in shader_node.inputs:
+                        shader_node.inputs["Cutout Opacity: Value"].default_value = 0.05
+            elif node_group == "EyeWet":
+                pbsdf = mat_nodes.new(type="ShaderNodeBsdfPrincipled")
+                pbsdf.inputs["Metallic"].default_value = 1.0
+                pbsdf.inputs["Roughness"].default_value = 0.0
+                pbsdf.inputs["IOR"].default_value = 1.450
+                pbsdf.inputs["Alpha"].default_value = 0.5
+                if bpy.app.version[0] >= 4:
+                    pbsdf.inputs["Specular IOR Level"].default_value = 1.0
+                    pbsdf.inputs["Transmission Weight"].default_value = 1.0
+                else:
+                    pbsdf.inputs["Specular"].default_value = 1.0
+                    pbsdf.inputs["Transmission"].default_value = 1.0
+                # add fresnel node
+                fresnel = mat_nodes.new(type="ShaderNodeFresnel")
+                fresnel.inputs["IOR"].default_value = 1.450
+                # add transparent BSDF
+                transparent = mat_nodes.new(type="ShaderNodeBsdfTransparent")
+                # add mix shader
+                mix = mat_nodes.new(type="ShaderNodeMixShader")
+                # link nodes
+                mat_links.new(fresnel.outputs["Fac"], mix.inputs["Fac"])
+                mat_links.new(transparent.outputs["BSDF"], mix.inputs[1])
+                mat_links.new(pbsdf.outputs["BSDF"], mix.inputs[2])
+                mat_links.new(shader_node.outputs["Normal"], pbsdf.inputs["Normal"])
+                mat_links.new(mix.outputs["Shader"], out_node_cy.inputs["Surface"])
+                mat_links.new(mix.outputs["Shader"], out_node_ev.inputs["Surface"])
+            elif node_group == "EyeDry":
+                pbsdf = mat_nodes.new(type="ShaderNodeBsdfPrincipled")
+                pbsdf.inputs["Roughness"].default_value = 0.0
+                pbsdf.inputs["IOR"].default_value = 1.350
+                if bpy.app.version[0] >= 4:
+                    pbsdf.inputs["Specular IOR Level"].default_value = 0.0
+                else:
+                    pbsdf.inputs["Specular"].default_value = 0.0
+                mat_links.new(shader_node.outputs["Base Color"], pbsdf.inputs["Base Color"])
+                mat_links.new(shader_node.outputs["Normal"], pbsdf.inputs["Normal"])
+                mat_links.new(pbsdf.outputs["BSDF"], out_node_cy.inputs["Surface"])
+                mat_links.new(pbsdf.outputs["BSDF"], out_node_ev.inputs["Surface"])
+            elif node_group == "Eyelashes":
+                pbsdf = mat_nodes.new(type="ShaderNodeBsdfPrincipled")
+                mat_links.new(shader_node.outputs["Base Color"], pbsdf.inputs["Base Color"])
+                mat_links.new(shader_node.outputs["Normal"], pbsdf.inputs["Normal"])
+                mat_links.new(shader_node.outputs["Alpha"], pbsdf.inputs["Alpha"])
+                mat_links.new(pbsdf.outputs["BSDF"], out_node_cy.inputs["Surface"])
+                mat_links.new(pbsdf.outputs["BSDF"], out_node_ev.inputs["Surface"])
             else:
                 mat.cycles.displacement_method = "BUMP"
 
