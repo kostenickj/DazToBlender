@@ -330,6 +330,9 @@ class DtbShapeKeys:
         if key_block.name == "Basis":
             return
 
+        if len(morph_label) >= 63:
+            return
+
         # Create a custom property and set limits
         mesh_obj[morph_label] = 0.0
 
