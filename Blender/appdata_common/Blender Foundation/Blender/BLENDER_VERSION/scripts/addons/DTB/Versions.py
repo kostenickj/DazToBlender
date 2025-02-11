@@ -554,18 +554,19 @@ def import_obj(path):
             global_clamp_size=0.0,
         )
     else:
-        bpy.ops.import_scene.obj(
+        bpy.ops.wm.obj_import(
+        #bpy.ops.import_scene.obj(
             filepath=path,
-            axis_forward="-Z",
-            axis_up="Y",
+            forward_axis="NEGATIVE_Z",
+            up_axis="Y",
             filter_glob="*.obj;*.mtl",
-            use_smooth_groups=True,
+#            use_smooth_groups=True,
             use_split_objects=True,
             use_split_groups=True,
-            use_groups_as_vgroups=False,
-            use_image_search=True,
-            split_mode="OFF",
-            global_clamp_size=0.0,
+            import_vertex_groups=False,
+            #use_image_search=True,
+            #split_mode="OFF",
+            clamp_size=0.0,
         )
     Global.store_ary(True)
     wnew = Global.what_new()
